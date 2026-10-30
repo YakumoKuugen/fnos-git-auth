@@ -14,7 +14,7 @@ use crate::util::{create_private_dir, set_private_file_permissions, write_privat
 
 const HOOK_NAMES: &[&str] = &["pre-push", "pre-auto-gc"];
 
-/// 生成 hook 脚本。优先使用 PATH 中的 `fnos-git-auth`，否则回退到当前可执行文件。
+/// 生成 hook 脚本。优先使用生成 hook 的可执行文件，避免 PATH 中的旧版本抢先命中。
 pub fn hook_script(executable: &Path) -> String {
     let executable = executable.to_string_lossy().replace('\\', "/");
     let quoted = shell_single_quote(&executable);
@@ -24,10 +24,10 @@ pub fn hook_script(executable: &Path) -> String {
 # 在 git 远程操作前按需刷新 entry-token。
 
 FNOS_GIT_AUTH=""
-if command -v fnos-git-auth >/dev/null 2>&1; then
-    FNOS_GIT_AUTH="fnos-git-auth"
-elif [ -x '{quoted}' ]; then
+if [ -x '{quoted}' ]; then
     FNOS_GIT_AUTH='{quoted}'
+elif command -v fnos-git-auth >/dev/null 2>&1; then
+    FNOS_GIT_AUTH="fnos-git-auth"
 fi
 
 if [ -z "$FNOS_GIT_AUTH" ]; then
