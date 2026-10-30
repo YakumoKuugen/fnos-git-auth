@@ -21,7 +21,7 @@ pub fn hook_script(executable: &Path) -> String {
     format!(
         r#"#!/bin/sh
 # 此文件由 fnos-git-auth 自动生成，请勿手动修改。
-# 在 git 远程操作前按需刷新 entry-token。
+# 在 git push 前刷新 entry-token，避免服务端提前失效导致 401/403。
 
 FNOS_GIT_AUTH=""
 if [ -x '{quoted}' ]; then
@@ -34,7 +34,7 @@ if [ -z "$FNOS_GIT_AUTH" ]; then
     exit 0
 fi
 
-"$FNOS_GIT_AUTH" refresh --if-needed >/dev/null 2>&1
+"$FNOS_GIT_AUTH" refresh >/dev/null 2>&1
 if [ $? -ne 0 ]; then
     echo "[fnos-git-auth] Token 刷新失败，请检查登录状态" >&2
 fi
@@ -151,7 +151,7 @@ mod tests {
     fn script_contains_required_parts() {
         let script = hook_script(Path::new("/usr/local/bin/fnos-git-auth"));
         assert!(script.starts_with("#!/bin/sh"));
-        assert!(script.contains("refresh --if-needed"));
+        assert!(script.contains(" refresh >/dev/null"));
         assert!(script.contains("/usr/local/bin/fnos-git-auth"));
         assert!(script.ends_with("exit 0\n"));
     }
@@ -186,7 +186,7 @@ mod tests {
         assert!(has(&paths, &git));
         for name in HOOK_NAMES {
             let content = fs::read_to_string(paths.hooks_dir().join(name)).unwrap();
-            assert!(content.contains("refresh --if-needed"));
+            assert!(content.contains(" refresh >/dev/null"));
         }
 
         remove(&paths, &git).unwrap();

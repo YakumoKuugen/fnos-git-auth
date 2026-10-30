@@ -181,7 +181,8 @@ fnos-git-auth refresh
 服务器返回 `65534`（验签失败），随后会错误地回退到“账号密码 + 2FA”。当前版本已修复：
 `fnos-token` 失效后会优先静默使用 `long-token` 刷新，正常不会再要求输入验证码。
 
-Hook 调用的是隐藏参数 `refresh --if-needed`，token 仍然充足时不会发起网络请求。
+push 前 hook 会主动执行一次 `refresh`，确保 Git 使用最新的 `entry-token`，避免服务端
+提前失效导致 401/403。手动执行 `refresh` 也可以随时刷新。
 本地记录的过期时间只是估算；如果服务端提前让 token 失效，push 返回 401/403 时执行一次
 `fnos-git-auth refresh` 即可。
 
@@ -300,7 +301,7 @@ Windows 不允许覆盖正在运行的可执行文件，因此会下载 `.new` �
 - 凭据加密格式兼容，可以在两个版本之间切换；
 - 新增 `did` 字段会随配置保留，不影响 Python 版本读取；
 - Git `extraHeader` 键名和 hooks 路径一致；
-- 额外的 Rust 特性：2FA 登录、原有 hooks 路径备份/恢复、`refresh --if-needed`、
+- 额外的 Rust 特性：2FA 登录、原有 hooks 路径备份/恢复、push 前主动刷新、
   Windows 更新下载提示。
 
 ## 开发
