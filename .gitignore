@@ -1,0 +1,8 @@
+/target
+/.reference-fnos-git-auth
+*.tar.gz
+fnos-git-auth-diagnostic-*
+*.backup
+*.new
+.env
+.DS_Store

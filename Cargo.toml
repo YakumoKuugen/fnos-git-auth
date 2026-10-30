@@ -1,0 +1,51 @@
+[package]
+name = "fnos-git-auth"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "飞牛 fnOS Git 认证工具（Rust 实现）"
+license = "MIT"
+keywords = ["fnos", "git", "authentication", "nas"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "fnos-git-auth"
+path = "src/main.rs"
+
+[lib]
+name = "fnos_git_auth"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+aes = "0.8"
+base64 = "0.22"
+block-padding = "0.3"
+cbc = { version = "0.1", features = ["alloc"] }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive"] }
+data-encoding = "2"
+dirs = "5"
+flate2 = "1"
+futures-util = "0.3"
+hmac = "0.12"
+rand = "0.8"
+rsa = { version = "0.9", features = ["pem"] }
+rpassword = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+tar = "0.4"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "net", "io-util"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+ureq = { version = "2.10", features = ["json"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
