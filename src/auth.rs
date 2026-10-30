@@ -347,7 +347,7 @@ impl AuthService {
                     .await
                 {
                     Ok(()) => return Ok(()),
-                    Err(error) => println!("fnos_token 验证失败: {error}"),
+                    Err(error) => println!("fnos_token 验证失败: {error:#}"),
                 }
             }
         }
@@ -357,7 +357,7 @@ impl AuthService {
             if !store.is_long_token_expired() {
                 match self.refresh_with_long_token(&server, long_token).await {
                     Ok(()) => return Ok(()),
-                    Err(error) => println!("long_token 刷新失败: {error}"),
+                    Err(error) => println!("long_token 刷新失败: {error:#}"),
                 }
             }
         }
@@ -442,6 +442,10 @@ impl AuthService {
         client.set_device_id(device_id.clone());
         println!("正在使用 long_token 刷新...");
         self.connect_client(&mut client, server).await?;
+
+        // tokenLogin 是登录后的接口，必须用已有 secret 对请求签名；
+        // 否则服务器返回 65534（验签失败），随后只能回退到密码 + 2FA。
+        client.sign_key = old_config.sign_key.clone();
 
         let outcome = async {
             client.get_rsa_pub().await?;

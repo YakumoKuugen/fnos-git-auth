@@ -153,3 +153,20 @@ user.2fa.loginVerify
 - 自动生成 TOTP（本工具只接受用户输入或 `--code`，不保存 TOTP secret）。
 
 已有 TOTP 的账号可以正常完成登录；没有绑定 TOTP 的账号需要先在 Web 端绑定。
+
+## 与 token 自动刷新的关系
+
+2FA 账号频繁被要求输入验证码，不一定是 `long-token` 过期。实际抓包和复现中发现：
+
+- `fnos-token` 失效后，刷新流程会调用 `user.tokenLogin`；
+- `user.tokenLogin` 是登录后的接口，必须像其他业务请求一样，用已有
+  `sign_key` 对紧凑 JSON 做 HMAC-SHA256 签名；
+- 如果请求未签名，服务器返回 `errno=65534`（验签失败）；
+- 旧逻辑把这种情况当成 `long-token` 失效，继续用保存的密码登录；
+- 密码登录再次触发 2FA，所以表现为“过几个小时又要验证码”。
+
+修复方式是：在调用 `user.tokenLogin` 之前先设置旧的 `sign_key`。这样即使
+`fnos-token` 已过期，也能静默换取新的 token，不再触发 2FA。
+
+注意：如果 `long-token` 本身过期（本项目默认按 25 天估算），仍然需要重新登录并输入一次
+2FA；使用 `--trust-device` 可以减少这种情况。

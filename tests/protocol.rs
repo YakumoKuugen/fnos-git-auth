@@ -451,7 +451,7 @@ fn decode_request(message: &str) -> (String, String, Value) {
 
     let signature_required = !matches!(
         req.as_str(),
-        "encrypted" | "util.getSI" | "util.crypto.getRSAPub" | "ping" | "user.tokenLogin"
+        "encrypted" | "util.getSI" | "util.crypto.getRSAPub" | "ping"
     );
 
     if signature_required {

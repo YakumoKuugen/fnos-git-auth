@@ -177,7 +177,13 @@ fnos-git-auth refresh
 2. `fnos-token` 过期、`long-token` 未过期：`tokenLogin` 换新会话；
 3. 都不可用：使用保存的账号密码重新登录。
 
+`tokenLogin` 是登录态接口，请求必须使用已有 `sign_key` 做 HMAC 签名。旧实现漏掉签名时，
+服务器返回 `65534`（验签失败），随后会错误地回退到“账号密码 + 2FA”。当前版本已修复：
+`fnos-token` 失效后会优先静默使用 `long-token` 刷新，正常不会再要求输入验证码。
+
 Hook 调用的是隐藏参数 `refresh --if-needed`，token 仍然充足时不会发起网络请求。
+本地记录的过期时间只是估算；如果服务端提前让 token 失效，push 返回 401/403 时执行一次
+`fnos-git-auth refresh` 即可。
 
 ### `config`
 

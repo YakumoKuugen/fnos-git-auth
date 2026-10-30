@@ -585,13 +585,17 @@ pub fn ensure_success(value: &Value, context: &str) -> Result<()> {
     }
 
     let code = errno.to_string();
+    let fallback = match errno.as_i64() {
+        Some(65534) => "请求验签失败（sign_key 无效或请求未签名）".to_string(),
+        _ => format!("错误码: {code}"),
+    };
     let message = object
         .get("msg")
         .or_else(|| object.get("errmsg"))
         .or_else(|| object.get("error"))
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("错误码: {code}"));
+        .unwrap_or(fallback);
     bail!("{context}: {message}")
 }
 
@@ -621,6 +625,9 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("验证码错误"));
+
+        let error = ensure_success(&json!({"errno": 65534}), "long-token 登录失败").unwrap_err();
+        assert!(error.to_string().contains("验签失败"));
     }
 
     #[test]
