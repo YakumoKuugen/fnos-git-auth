@@ -120,6 +120,8 @@ fn set_windows_permissions(path: &Path, _directory: bool) {
 }
 
 #[cfg(not(windows))]
+// 非 Windows 目标上，权限由 unix 分支处理；此处仅为 `not(unix)` 分支保留符号。
+#[allow(dead_code)]
 fn set_windows_permissions(_path: &Path, _directory: bool) {}
 
 /// 检查 Git 是否可用，返回 `git version ...`。

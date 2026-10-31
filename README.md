@@ -92,6 +92,29 @@ fnos-git-auth config -k use_ssl -v true
 `use_ssl=false` 时，工具会同时写入 HTTP 和 HTTPS 两套 `extraHeader`，
 无论仓库地址是 `http://` 还是 `https://` 都能匹配。
 
+### 定时自动刷新
+
+Git hooks 只在 `push` / `auto-gc` 时触发，`fetch` / `pull` 不会刷新 token，
+睡一觉后 entry-token 就过期了。安装一个系统计划任务，让工具在后台自动续期：
+
+```bash
+fnos-git-auth schedule install          # 默认每 30 分钟
+fnos-git-auth schedule install -i 15    # 自定义间隔（5–1440 分钟）
+fnos-git-auth schedule status
+fnos-git-auth schedule uninstall
+```
+
+| 平台 | 机制 | 说明 |
+| --- | --- | --- |
+| macOS | LaunchAgent | 登录时执行一次，之后按间隔重复 |
+| Linux | systemd user timer | `Persistent=true`，开机/唤醒后补跑 |
+| Windows | 任务计划程序 + `wscript` | 隐藏窗口运行，不会闪控制台 |
+
+任务只执行 `refresh --if-needed`，token 仍然充足时不会发起网络请求。日志：
+macOS 写入 `~/.fnos-git-auth/logs/refresh.log`，Linux 用
+`journalctl --user -u fnos-git-auth-refresh` 查看，Windows 在隐藏窗口中静默运行。
+`logout` 不会删除这个任务，需要时手动 `schedule uninstall`。
+
 ## 命令参考
 
 ### `login`
@@ -164,6 +187,18 @@ fnos-git-auth status
 ```
 
 输出服务器、用户名、登录状态、过期时间、Git 配置和自动刷新状态。
+
+### `schedule`
+
+```text
+fnos-git-auth schedule install [-i <MINUTES>]   安装定时刷新任务（默认 30 分钟）
+fnos-git-auth schedule status                   查看任务状态
+fnos-git-auth schedule uninstall                卸载任务
+```
+
+macOS 写入 `~/Library/LaunchAgents/com.fnos-git-auth.refresh.plist`；
+Linux 写入 `~/.config/systemd/user/fnos-git-auth-refresh.{service,timer}`；
+Windows 创建名为 `fnos-git-auth refresh` 的计划任务，启动脚本存放在配置目录。
 
 ### `refresh`
 

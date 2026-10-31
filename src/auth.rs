@@ -319,6 +319,14 @@ impl AuthService {
                 "未启用"
             }
         );
+        println!(
+            "定时刷新: {}",
+            if crate::schedule::is_installed() {
+                "已启用".to_string()
+            } else {
+                "未启用（fnos-git-auth schedule install）".to_string()
+            }
+        );
     }
 
     /// 刷新 token。`if_needed=true` 时，token 仍充足则直接返回（供 hook 使用）。

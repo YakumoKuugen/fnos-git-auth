@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 
 use crate::git::GitRunner;
 use crate::paths::AppPaths;
-use crate::util::{create_private_dir, set_private_file_permissions, write_private_file};
+use crate::util::{create_private_dir, write_private_file};
 
 const HOOK_NAMES: &[&str] = &["pre-push", "pre-auto-gc"];
 
@@ -139,6 +139,8 @@ fn set_hook_permissions(path: &Path) {
 
 #[cfg(not(unix))]
 fn set_hook_permissions(path: &Path) {
+    use crate::util::set_private_file_permissions;
+
     // Windows 上 Git 通过 Git Bash 调用脚本，不依赖执行位。
     set_private_file_permissions(path);
 }

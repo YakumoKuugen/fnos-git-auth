@@ -13,6 +13,7 @@ pub mod diagnostic;
 pub mod git;
 pub mod hooks;
 pub mod paths;
+pub mod schedule;
 pub mod update;
 pub mod util;
 

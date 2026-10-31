@@ -13,6 +13,7 @@ use crate::credentials::CredentialsStore;
 use crate::diagnostic;
 use crate::git::{ensure_git_available, GitRunner};
 use crate::paths::AppPaths;
+use crate::schedule;
 use crate::update;
 use crate::util::normalize_server;
 
@@ -50,6 +51,8 @@ pub enum Commands {
     Git(GitArgs),
     /// 生成诊断信息包
     Diagnostic(DiagnosticArgs),
+    /// 管理定时自动刷新（系统计划任务）
+    Schedule(ScheduleArgs),
 }
 
 #[derive(Args, Debug)]
@@ -137,6 +140,29 @@ pub struct DiagnosticArgs {
     pub print: bool,
 }
 
+#[derive(Args, Debug)]
+pub struct ScheduleArgs {
+    #[command(subcommand)]
+    pub action: ScheduleAction,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ScheduleAction {
+    /// 安装定时刷新任务（登录时 + 每隔 N 分钟）
+    Install(ScheduleInstallArgs),
+    /// 卸载定时刷新任务
+    Uninstall,
+    /// 查看定时刷新任务状态
+    Status,
+}
+
+#[derive(Args, Debug)]
+pub struct ScheduleInstallArgs {
+    /// 刷新间隔（分钟）
+    #[arg(short = 'i', long, default_value_t = schedule::DEFAULT_INTERVAL_MINUTES)]
+    pub interval: u64,
+}
+
 struct LoginInput {
     server: String,
     username: String,
@@ -161,6 +187,15 @@ pub async fn run() -> Result<()> {
         Commands::Config(args) => run_config(&paths, args),
         Commands::Git(args) => run_git(&git, args),
         Commands::Diagnostic(args) => run_diagnostic(&paths, &git, args),
+        Commands::Schedule(args) => run_schedule(&paths, args),
+    }
+}
+
+fn run_schedule(paths: &AppPaths, args: ScheduleArgs) -> Result<()> {
+    match args.action {
+        ScheduleAction::Install(args) => schedule::install(paths, args.interval),
+        ScheduleAction::Uninstall => schedule::uninstall(),
+        ScheduleAction::Status => schedule::status(),
     }
 }
 
