@@ -110,7 +110,11 @@ fnos-git-auth schedule uninstall
 | Linux | systemd user timer | `Persistent=true`，开机/唤醒后补跑 |
 | Windows | 任务计划程序 + `wscript` | 隐藏窗口运行，不会闪控制台 |
 
-任务只执行 `refresh --if-needed`，token 仍然充足时不会发起网络请求。日志：
+任务执行 `refresh --if-needed`，但它**只按「距上次成功刷新的时间」去抖**（默认
+`refresh_min_interval_minutes = 20`），不会因为本地估算的 8 小时还没到就跳过。
+fnOS 服务端让 entry-token 失效的时间远早于这个估算值（实测 3 小时内就会 403），
+早期版本正是拿估算时间当跳过依据，导致定时任务每 30 分钟跑一次却一直打印
+「Token 仍然有效，无需刷新」，直到本地 8 小时窗口结束才真正刷新。日志：
 macOS 写入 `~/.fnos-git-auth/logs/refresh.log`，Linux 用
 `journalctl --user -u fnos-git-auth-refresh` 查看，Windows 在隐藏窗口中静默运行。
 `logout` 不会删除这个任务，需要时手动 `schedule uninstall`。
@@ -218,8 +222,8 @@ fnos-git-auth refresh
 
 push 前 hook 会主动执行一次 `refresh`，确保 Git 使用最新的 `entry-token`，避免服务端
 提前失效导致 401/403。手动执行 `refresh` 也可以随时刷新。
-本地记录的过期时间只是估算；如果服务端提前让 token 失效，push 返回 401/403 时执行一次
-`fnos-git-auth refresh` 即可。
+`refresh --if-needed` 只按 `refresh_min_interval_minutes`（默认 20 分钟）做去抖，
+不再相信本地估算的过期时间；服务端提前失效时，下一次 hook 或定时任务就会补刷。
 
 ### `config`
 
@@ -242,6 +246,7 @@ fnos-git-auth config -r                      # 恢复默认
 | `fnos_token_expire_hours` | `8` | 本地记录的 fnos-token 有效期 |
 | `long_token_expire_days` | `25` | 本地记录的 long-token 有效期 |
 | `token_refresh_threshold_hours` | `1.0` | 提前多久触发自动刷新 |
+| `refresh_min_interval_minutes` | `20` | `--if-needed` 两次刷新的最小间隔（0 = 每次都刷） |
 | `auto_save_credentials` | `true` | 登录成功后询问保存凭据 |
 | `auto_refresh_token` | `true` | 登录时是否安装自动刷新 hooks |
 

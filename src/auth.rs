@@ -7,7 +7,9 @@ use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
 use crate::client::{is_six_digit_code, FnOsClient, TwoFactorChallenge};
-use crate::config::{expiry_after_days, expiry_after_hours, ConfigStore, ServerConfig};
+use crate::config::{
+    expiry_after_days, expiry_after_hours, now_iso, ConfigStore, ServerConfig,
+};
 use crate::credentials::CredentialsStore;
 use crate::git::GitRunner;
 use crate::hooks;
@@ -211,6 +213,8 @@ impl AuthService {
             server_config.admin = client.admin;
             server_config.back_id = Some(client.back_id.clone());
             server_config.expires_at = Some(entry_expires_at);
+            // 登录本身就拿到了最新 token，记录下来供 `--if-needed` 去抖。
+            server_config.last_refresh_at = Some(now_iso());
             store.save_server_config(server_config, true)?;
 
             println!("正在配置 git...");
@@ -298,7 +302,10 @@ impl AuthService {
             println!("提示: Token 即将过期，建议刷新");
         }
         if let Some(expires_at) = server.entry_expiry() {
-            println!("过期时间: {expires_at}");
+            println!("过期时间: {expires_at}（本地估算）");
+        }
+        if let Some(last_refresh) = server.last_refresh_at.as_deref() {
+            println!("最后刷新: {last_refresh}");
         }
         if let Some(last_login) = server.last_login.as_deref() {
             println!("最后登录: {last_login}");
@@ -329,7 +336,14 @@ impl AuthService {
         );
     }
 
-    /// 刷新 token。`if_needed=true` 时，token 仍充足则直接返回（供 hook 使用）。
+    /// 刷新 token。`if_needed=true` 时只在最近没有刷新过时才执行（供 hook / 定时任务使用）。
+    ///
+    /// 注意：这里**不能**再依据 `entry_token_expires_at` 来判断“还不用刷新”。
+    /// 那个时间是本地按 `entry_token_expire_hours`（默认 8 小时）估算出来的，
+    /// 而 fnOS 服务端真正让 entry-token 失效的时间要早得多（实测 3 小时内就 403）。
+    /// 之前定时任务每 30 分钟跑一次，却因为估算还没过期而一直打印
+    /// “Token 仍然有效，无需刷新”，等到本地 8 小时窗口结束才真正刷新，
+    /// 中间几个小时 push 全是 403。现在改成按「上次成功刷新的时间」做去抖。
     pub async fn refresh(&self, if_needed: bool) -> Result<()> {
         let store = self.store();
         let Some(config) = store.server() else {
@@ -342,9 +356,19 @@ impl AuthService {
             bail!("当前未登录");
         }
 
-        if if_needed && !store.is_entry_token_expired() && !store.token_needs_refresh() {
-            println!("Token 仍然有效，无需刷新");
-            return Ok(());
+        if if_needed {
+            let min_interval = store.pref_i64("refresh_min_interval_minutes", 20);
+            if store.refreshed_within(min_interval) {
+                let age = store.minutes_since_refresh().unwrap_or_default();
+                println!(
+                    "[{}] {} 分钟前刚刷新过（阈值 {} 分钟），跳过",
+                    now_iso(),
+                    age,
+                    min_interval
+                );
+                return Ok(());
+            }
+            println!("[{}] 开始刷新 token", now_iso());
         }
 
         // 策略 1：fnos-token 未过期，直接验证并换取 entry-token。
@@ -429,6 +453,7 @@ impl AuthService {
         if !client.back_id.is_empty() {
             config.back_id = Some(client.back_id.clone());
         }
+        config.last_refresh_at = Some(now_iso());
         store.save_server_config(config, false)?;
 
         client.close().await;
@@ -508,6 +533,7 @@ impl AuthService {
         if !client.back_id.is_empty() {
             config.back_id = Some(client.back_id.clone());
         }
+        config.last_refresh_at = Some(now_iso());
         store.save_server_config(config, false)?;
 
         client.close().await;
@@ -598,6 +624,23 @@ mod tests {
         let service = AuthService::new(AppPaths::new(dir.path()));
         let error = service.refresh(false).await.unwrap_err();
         assert!(error.to_string().contains("未登录"));
+    }
+
+    #[tokio::test]
+    async fn if_needed_skips_only_right_after_a_refresh() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::new(dir.path());
+        let store = ConfigStore::new(paths.clone());
+        let mut server = ServerConfig::new("demo.fnos.net");
+        server.fnos_token = Some("token".into());
+        server.entry_token = Some("entry".into());
+        // 估算还有 8 小时：旧逻辑会因此跳过，新逻辑只认 last_refresh_at。
+        server.entry_token_expires_at = Some(expiry_after_hours(8));
+        server.last_refresh_at = Some(now_iso());
+        store.save_server_config(server, false).unwrap();
+
+        // 不发起网络请求就返回，说明被去抖逻辑挡住了。
+        AuthService::new(paths.clone()).refresh(true).await.unwrap();
     }
 
     #[test]

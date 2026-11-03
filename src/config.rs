@@ -54,6 +54,12 @@ pub struct ServerConfig {
     pub back_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_login: Option<String>,
+    /// 最近一次成功拿到 token 的时间（登录或刷新）。本地时间，ISO 格式。
+    ///
+    /// `refresh --if-needed` 用它做去抖：服务端真正让 token 失效的时间
+    /// 远早于本地估算的有效期，所以不能再拿「估算过期时间」当跳过依据。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_refresh_at: Option<String>,
     /// 兼容 Python 版本的旧字段。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
@@ -90,6 +96,7 @@ pub fn default_preferences() -> BTreeMap<String, Value> {
     prefs.insert("language".into(), json!("zh"));
     prefs.insert("token_expire_hours".into(), json!(24));
     prefs.insert("token_refresh_threshold_hours".into(), json!(1.0));
+    prefs.insert("refresh_min_interval_minutes".into(), json!(20));
     prefs.insert("entry_token_expire_hours".into(), json!(8));
     prefs.insert("fnos_token_expire_hours".into(), json!(8));
     prefs.insert("long_token_expire_days".into(), json!(25));
@@ -261,6 +268,24 @@ impl ConfigStore {
         let threshold = self.pref_f64("token_refresh_threshold_hours", 1.0);
         Local::now() > expires_at - Duration::minutes((threshold * 60.0) as i64)
     }
+
+    /// 距上次成功登录/刷新过去了多少分钟；没有记录时返回 `None`。
+    pub fn minutes_since_refresh(&self) -> Option<i64> {
+        let server = self.server()?;
+        let timestamp = parse_datetime(server.last_refresh_at.as_deref()?)?;
+        Some((Local::now() - timestamp).num_minutes().max(0))
+    }
+
+    /// 最近 `minutes` 分钟内是否刚拿到过 token（`refresh --if-needed` 的去抖依据）。
+    ///
+    /// 服务端让 entry-token 失效的时间比本地估算的 8 小时早得多，
+    /// 因此「估算过期时间还没到」不能作为跳过刷新的理由；只按时间窗口去抖。
+    pub fn refreshed_within(&self, minutes: i64) -> bool {
+        if minutes <= 0 {
+            return false;
+        }
+        matches!(self.minutes_since_refresh(), Some(age) if age < minutes)
+    }
 }
 
 /// 与 Python `datetime.isoformat()` 一致：本地时间，不带时区偏移。
@@ -397,6 +422,33 @@ mod tests {
         server.entry_token_expires_at = Some(expiry_after_hours(-1));
         store.save_server_config(server, false).unwrap();
         assert!(store.is_entry_token_expired());
+    }
+
+    #[test]
+    fn refresh_debounce_is_based_on_last_refresh_time() {
+        let (_dir, store) = test_store();
+        let mut server = ServerConfig::new("demo.fnos.net");
+        server.fnos_token = Some("token".into());
+        // 本地估算还有 8 小时，但这不是跳过的依据。
+        server.entry_token_expires_at = Some(expiry_after_hours(8));
+        store.save_server_config(server, false).unwrap();
+
+        // 没有刷新记录：必须刷新。
+        assert_eq!(store.minutes_since_refresh(), None);
+        assert!(!store.refreshed_within(20));
+
+        let mut server = store.server().unwrap();
+        server.last_refresh_at = Some(now_iso());
+        store.save_server_config(server, false).unwrap();
+        assert_eq!(store.minutes_since_refresh(), Some(0));
+        assert!(store.refreshed_within(20));
+        assert!(!store.refreshed_within(0));
+
+        let mut server = store.server().unwrap();
+        server.last_refresh_at = Some(expiry_after_hours(-2));
+        store.save_server_config(server, false).unwrap();
+        assert!(!store.refreshed_within(20));
+        assert!(store.minutes_since_refresh().unwrap() >= 119);
     }
 
     #[test]
