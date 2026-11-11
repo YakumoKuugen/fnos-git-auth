@@ -7,9 +7,7 @@ use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
 use crate::client::{is_six_digit_code, FnOsClient, TwoFactorChallenge};
-use crate::config::{
-    expiry_after_days, expiry_after_hours, now_iso, ConfigStore, ServerConfig,
-};
+use crate::config::{expiry_after_days, expiry_after_hours, now_iso, ConfigStore, ServerConfig};
 use crate::credentials::CredentialsStore;
 use crate::git::GitRunner;
 use crate::hooks;

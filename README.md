@@ -110,6 +110,10 @@ fnos-git-auth schedule uninstall
 | Linux | systemd user timer | `Persistent=true`，开机/唤醒后补跑 |
 | Windows | 任务计划程序 + `wscript` | 隐藏窗口运行，不会闪控制台 |
 
+Windows 会优先通过任务 XML 注册“登录时 + 每 N 分钟”触发器；如果当前账户/策略不允许
+XML 注册（常见于非管理员账户的 `Access is denied`），会自动退回为普通
+`schtasks` 每 N 分钟循环任务，登录后最多等待一个刷新间隔。
+
 任务执行 `refresh --if-needed`，但它**只按「距上次成功刷新的时间」去抖**（默认
 `refresh_min_interval_minutes = 20`），不会因为本地估算的 8 小时还没到就跳过。
 fnOS 服务端让 entry-token 失效的时间远早于这个估算值（实测 3 小时内就会 403），

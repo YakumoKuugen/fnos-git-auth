@@ -508,15 +508,38 @@ mod platform {
         let xml_arg = xml.to_string_lossy().to_string();
         let output = schtasks(&["/Create", "/F", "/TN", TASK_NAME, "/XML", xml_arg.as_str()])
             .context("无法执行 schtasks，命令提示符权限可能不足")?;
+        if output.status.success() {
+            println!("已安装定时刷新任务（任务计划程序）: {TASK_NAME}");
+            println!("  间隔: 每 {interval_minutes} 分钟，登录时也会执行一次");
+            println!("  启动脚本: {}", vbs.display());
+            return Ok(());
+        }
+
+        // 部分标准用户/策略环境不允许通过 /XML 注册任务（返回 Access is denied），
+        // 但允许用 schtasks 普通参数创建当前用户任务。退化为每 N 分钟循环执行。
+        let xml_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        eprintln!("提示: XML 方式安装计划任务失败，尝试兼容模式。原因: {xml_error}");
+
+        let interval = interval_minutes.to_string();
+        let action = format!("wscript.exe //B \"{}\"", vbs.display());
+        let mut args: Vec<&str> = vec!["/Create", "/F", "/TN", TASK_NAME, "/TR", action.as_str()];
+        if interval_minutes >= 1440 {
+            args.extend(["/SC", "DAILY", "/MO", "1"]);
+        } else {
+            args.extend(["/SC", "MINUTE", "/MO", interval.as_str()]);
+        }
+        args.extend(["/RL", "LIMITED"]);
+
+        let output = schtasks(&args).context("无法执行 schtasks")?;
         if !output.status.success() {
             bail!(
-                "创建计划任务失败: {}",
+                "创建计划任务失败（兼容模式）: {}\nXML 模式错误: {xml_error}",
                 String::from_utf8_lossy(&output.stderr).trim()
             );
         }
 
-        println!("已安装定时刷新任务（任务计划程序）: {TASK_NAME}");
-        println!("  间隔: 每 {interval_minutes} 分钟，登录时也会执行一次");
+        println!("已安装定时刷新任务（任务计划程序，兼容模式）: {TASK_NAME}");
+        println!("  间隔: 每 {interval_minutes} 分钟（当前账户无法创建登录触发器）");
         println!("  启动脚本: {}", vbs.display());
         Ok(())
     }
